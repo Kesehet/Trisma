@@ -21,15 +21,22 @@ Trisma is built using the following technologies:
 * **MSS**: Trisma uses MSS to capture the screen of the sharer.
 * **Pillow**: Trisma uses Pillow to process the captured screen.
 
-## Setup
+## Setup for Client
 
-To set up Trisma, follow these steps:
+To set up Trisma as a client, follow these steps:
+
+1. Install the required packages by running `pip install -r requirements.txt`.
+2. Run the client by running `python client.py`.
+3. Check Logs to make sure the stream is connected and working.
+
+## Setup for Server
+
+To set up Trisma as a server, follow these steps:
 
 1. Install the required packages by running `pip install -r requirements.txt`.
 2. Run the server by running `python server.py`.
-3. Open a web browser and navigate to `http://localhost:8080`.
+3. Open a web browser and navigate to `http://{SERVER_IP}:8080`.
 4. Click on the "Share Screen" button to share your screen.
-5. The viewer can then navigate to `http://localhost:8080` and click on the "View Screen" button to view the shared screen.
 
 ## Limitations
 
