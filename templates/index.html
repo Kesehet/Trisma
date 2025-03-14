@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Share with Remote Control</title>
+    <style>
+        body { text-align: center; }
+        canvas { border: 2px solid greenyellow;}
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+</head>
+<body>
+    
+    <canvas id="screen" class="w3-image w3-border w3-black" width="2560" height="1440"></canvas>
+
+    <script>
+        const screenCanvas = document.getElementById("screen");
+        const ctx = screenCanvas.getContext("2d");
+        let CONTROL_SENDER_PORT = 0;
+        let IMAGE_SENDER_PORT = 0;
+        let RefreshRate = 10;
+        let controlSocket = null;
+        let imageSocket = null;
+        
+        function initControlWebSocket() {
+            if (controlSocket) {
+                controlSocket.close();
+            }
+            
+            controlSocket = new WebSocket(`ws://${location.hostname}:${CONTROL_SENDER_PORT}`);
+            
+            controlSocket.onopen = () => {
+                console.log("✅ Control WebSocket connected.");
+            };
+            
+            controlSocket.onerror = (error) => {
+                console.error("❌ Control WebSocket error:", error);
+            };
+            
+            screenCanvas.addEventListener("mousemove", (event) => {
+                const { x, y } = calculatePercentagePosition(event);
+                controlSocket.send(JSON.stringify({ action: "move", x, y }));
+            });
+
+            screenCanvas.addEventListener("click", (event) => {
+                const { x, y } = calculatePercentagePosition(event);
+                controlSocket.send(JSON.stringify({ action: "click", x, y }));
+            });
+
+            document.addEventListener("keydown", (event) => {
+                controlSocket.send(JSON.stringify({ action: "keydown", key: event.key }));
+            });
+
+            document.addEventListener("keyup", (event) => {
+                controlSocket.send(JSON.stringify({ action: "keyup", key: event.key }));
+            });
+        }
+
+        function initImageWebSocket() {
+            if (imageSocket) {
+                imageSocket.close();
+            }
+            
+            imageSocket = new WebSocket(`ws://${location.hostname}:${IMAGE_SENDER_PORT}`);
+            
+            imageSocket.onopen = () => {
+                console.log("✅ Image WebSocket connected.");
+            };
+            
+            imageSocket.onerror = (error) => {
+                console.error("❌ Image WebSocket error:", error);
+            };
+            
+            imageSocket.onmessage = (event) => {
+                const blob = event.data;
+                const img = new Image();
+                img.onload = () => {
+                    ctx.clearRect(0, 0, screenCanvas.width, screenCanvas.height);
+                    ctx.drawImage(img, 0, 0, screenCanvas.width, screenCanvas.height);
+                };
+                const objectURL = URL.createObjectURL(blob);
+                img.onload = () => {
+                    ctx.clearRect(0, 0, screenCanvas.width, screenCanvas.height);
+                    ctx.drawImage(img, 0, 0, screenCanvas.width, screenCanvas.height);
+                    URL.revokeObjectURL(objectURL);
+                };
+                img.src = objectURL;
+            };
+        }
+
+        function calculatePercentagePosition(event) {
+            const rect = screenCanvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left) / rect.width;
+            const y = (event.clientY - rect.top) / rect.height;
+            console.log(x, y);
+            return { x, y };
+        }
+        async function getConfig() {
+            fetch("/config")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.control_port) {
+                        CONTROL_SENDER_PORT = data.control_port;
+                        initControlWebSocket();
+                    }
+                    if (data.image_sender_port) {
+                        IMAGE_SENDER_PORT = data.image_sender_port;
+                        initImageWebSocket();
+                    }
+
+                    document.getElementById("host").value = data.host;
+                    document.getElementById("image_receiver_port").value = data.image_receiver_port;
+                    document.getElementById("image_sender_port").value = data.image_sender_port;
+                    document.getElementById("control_port").value = data.control_port;
+                    document.getElementById("control_sender_port").value = data.control_sender_port;
+                    document.getElementById("resolution_multiplier").value = data.resolution_multiplier;
+                    document.getElementById("refresh_rate").value = data.refresh_rate;
+                    document.getElementById("resolution_value").innerText = data.resolution_multiplier;
+                    document.getElementById("refresh_value").innerText = data.refresh_rate;
+
+
+                })
+                .catch(error => {
+                    console.error("❌ Error fetching config:", error);
+                });
+        }
+
+        function updateConfig() {
+            const config = {
+                host: document.getElementById("host").value,
+                image_receiver_port: parseInt(document.getElementById("image_receiver_port").value),
+                image_sender_port: parseInt(document.getElementById("image_sender_port").value),
+                control_port: parseInt(document.getElementById("control_port").value),
+                control_sender_port: parseInt(document.getElementById("control_sender_port").value),
+                resolution_multiplier: parseFloat(document.getElementById("resolution_multiplier").value),
+                refresh_rate: parseInt(document.getElementById("refresh_rate").value)
+            };
+
+            fetch("/config", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .catch(error => console.error("Error updating config:", error));
+        }
+        
+        getConfig();
+        updateConfig();
+    </script>
+
+    <div class="w3-container w3-card w3-light-grey w3-padding">
+        <h2>Server Configuration</h2>
+        <label>Host:</label>
+        <input class="w3-input w3-border" id="host" type="text" readonly><br>
+        
+        <label>Image Receiver Port:</label>
+        <input class="w3-input w3-border" id="image_receiver_port" type="number" readonly><br>
+        
+        <label>Image Sender Port:</label>
+        <input class="w3-input w3-border" id="image_sender_port" type="number" readonly><br>
+        
+        <label>Control Port:</label>
+        <input class="w3-input w3-border" id="control_port" type="number" readonly><br>
+        
+        <label>Control Sender Port:</label>
+        <input class="w3-input w3-border" id="control_sender_port" type="number" readonly><br>
+        
+        <label>Resolution Multiplier:</label>
+        <input class="w3-range" id="resolution_multiplier" type="range" min="0" max="1" step="0.1" oninput="document.getElementById('resolution_value').innerText = this.value; updateConfig()">
+        <span id="resolution_value">1</span><br>
+        
+        <label>Refresh Rate:</label>
+        <input class="w3-range" id="refresh_rate" type="range" min="1" max="60" step="1" oninput="document.getElementById('refresh_value').innerText = this.value; updateConfig()">
+        <span id="refresh_value">10</span><br><br>
+    </div>
+
+</body>
+</html>
