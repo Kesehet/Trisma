@@ -7,13 +7,14 @@ import threading
 from flask import Flask, Response, render_template, request
 from flask_socketio import SocketIO
 from PIL import Image
+import requests
 
 # Flask Setup
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Debug Mode
-DEBUG = False
+DEBUG = True
 
 # Shared Variables (Thread-Safe)
 image_data = None  # Stores received image
@@ -23,10 +24,16 @@ mouse_event = None  # Stores mouse event
 # Network Configuration
 HOST = "0.0.0.0"
 min_port, max_port = 1000, 65530
-IMAGE_RECEIVER_PORT = random.randint(min_port, max_port)
-IMAGE_SENDER_PORT = random.randint(min_port, max_port)
-CONTROL_PORT = random.randint(min_port, max_port)
-CONTROL_SENDER_PORT = random.randint(min_port, max_port)
+IMAGE_RECEIVER_PORT = 1111
+IMAGE_SENDER_PORT = 2222
+CONTROL_PORT = 3333
+CONTROL_SENDER_PORT = 4444
+
+def get_ip_address():
+    '''Get public IP address'''
+    if DEBUG:
+        return '127.0.0.1'
+    return requests.get('https://api64.ipify.org').text
 
 config = {
     "host": HOST,
@@ -35,7 +42,8 @@ config = {
     "control_port": CONTROL_PORT,
     "control_sender_port": CONTROL_SENDER_PORT,
     "resolution_multiplier": 1,
-    "refresh_rate": 10
+    "refresh_rate": 10,
+    "server_uri": get_ip_address()
 }
 
 # WebSocket Handlers
@@ -125,8 +133,10 @@ def get_config():
 
 # Run Flask in a Separate Thread
 def run_flask():
-    print("🚀 Flask running at http://localhost:8080")
+    print(f"🚀 Flask running at http://{get_ip_address()}:8080")
     socketio.run(app, host=HOST, port=8080, debug=DEBUG, use_reloader=False)
+
+
 
 # Main Execution
 if __name__ == "__main__":

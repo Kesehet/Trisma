@@ -39,9 +39,14 @@
                 console.error("❌ Control WebSocket error:", error);
             };
             
+            var oldPosition = { x: 0, y: 0 };
             screenCanvas.addEventListener("mousemove", (event) => {
                 const { x, y } = calculatePercentagePosition(event);
-                controlSocket.send(JSON.stringify({ action: "move", x, y }));
+                
+                if (isFarEnough(x, y, oldPosition.x, oldPosition.y)) {
+                    controlSocket.send(JSON.stringify({ action: "move", x, y }));
+                    oldPosition = { x, y };
+                }
             });
 
             screenCanvas.addEventListener("mousedown", (event) => {
@@ -75,7 +80,7 @@
 
             document.addEventListener("keydown", (event) => {
                 // Prevent default browser shortcuts
-                if (event.ctrlKey || event.altKey || event.metaKey) {
+                if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.key === " ") {
                     event.preventDefault();
                 }
 
@@ -103,7 +108,7 @@
             });
 
 
-        }
+        } 
 
         function initImageWebSocket() {
             if (imageSocket) {
@@ -141,8 +146,12 @@
             const rect = screenCanvas.getBoundingClientRect();
             const x = (event.clientX - rect.left) / rect.width;
             const y = (event.clientY - rect.top) / rect.height;
-            console.log(x, y);
             return { x, y };
+        }
+
+        var MOUSE_UPDATER_DISTANCE = 0.01;
+        function isFarEnough(x, y, oldX, oldY) {
+            return Math.abs(x - oldX) > MOUSE_UPDATER_DISTANCE || Math.abs(y - oldY) > MOUSE_UPDATER_DISTANCE;
         }
         async function getConfig() {
             fetch("/config")
@@ -196,8 +205,7 @@
             .catch(error => console.error("Error updating config:", error));
         }
         
-        getConfig();
-        updateConfig();
+        
     </script>
 
     <div class="w3-container w3-card w3-light-grey w3-padding">
@@ -210,6 +218,11 @@
         <label>Refresh Rate:</label>
         <input class="w3-range" id="refresh_rate" type="range" min="1" max="60" step="1" oninput="document.getElementById('refresh_value').innerText = this.value; updateConfig()">
         <span id="refresh_value">10</span><br>
+
+        <label>Mouse Smoothness:</label>
+        <input class="w3-range" id="mouse_updater_distance" type="range" min="0" max="0.2" step="0.01" oninput="MOUSE_UPDATER_DISTANCE = this.value;document.getElementById('mouse_updater_distance_value').innerText = this.value;"><br>
+        <span id="mouse_updater_distance" id="mouse_updater_distance_value">0.01</span><br>
+
 
         <label>Host:</label>
         <input class="w3-input w3-border" id="host" type="text" readonly><br>
@@ -228,6 +241,10 @@
         
         <br><br>
     </div>
+
+    <script>
+        getConfig();
+    </script>
 
 </body>
 </html>

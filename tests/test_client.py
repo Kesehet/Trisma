@@ -174,3 +174,4 @@ def main():
     # **Step 6: Display Results in GUI**
     display_results(ping_status, config_status, missing_libs, pyautogui_result, ws_control_status, ws_image_status)
 
+main()
