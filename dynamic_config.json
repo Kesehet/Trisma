@@ -1,0 +1,11 @@
+{
+    "host": "localhost",
+    "image_receiver_port": 1111,
+    "image_sender_port": 2222,
+    "control_port": 3333,
+    "control_sender_port": 4444,
+    "resolution_multiplier": 1,
+    "refresh_rate": 10,
+    "server_uri": "localhost",
+    "web_interface_port": 8080
+}

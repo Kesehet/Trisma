@@ -11,8 +11,9 @@ import pyautogui
 # Configuration
 BASE_URI = "localhost"
 WEB_URI = f"http://{BASE_URI}:8080"
-CONTROL_SENDER_PORT = 9999
-IMAGE_RECEIVER_PORT = 9998
+CONTROL_SENDER_PORT = 4444
+IMAGE_RECEIVER_PORT = 1111
+WEB_INTERFACE_PORT = 8080
 
 pyautogui.FAILSAFE = False
 
@@ -146,19 +147,50 @@ async def receive_mouse_control():
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             print(f"⚠️ Invalid mouse message format: {message} - Error: {e}")
 
+
+def load_local_config():
+    global WEB_INTERFACE_PORT
+    try:
+        with open("dynamic_config.json", "r") as config_file:
+            resp = json.load(config_file)
+            return {
+                "control_sender_port": resp.get("control_sender_port", CONTROL_SENDER_PORT),
+                "image_receiver_port": resp.get("image_receiver_port", IMAGE_RECEIVER_PORT),
+                "web_interface_port": resp.get("web_interface_port", WEB_INTERFACE_PORT),
+                "server_uri": resp.get("server_uri", BASE_URI)
+            }
+    except FileNotFoundError:
+        return {}
+
+def load_server_config():
+    try:
+        resp = requests.get(f"http://{BASE_URI}:{}/config").json()
+
+        return {
+            "resolution_multiplier": float(resp.get("resolution_multiplier", SCREEN_RESOLUTION_MULTIPLIER)),
+            "refresh_rate": float(resp.get("refresh_rate", REFRESH_RATE)),
+        }
+    except requests.exceptions.RequestException:
+        return {}
+
+def load_config():
+    local_config = load_local_config()
+    server_config = load_server_config()
+    return {**local_config, **server_config}
+
 async def set_config():
     """Fetches and updates configuration from the server."""
     global SCREEN_RESOLUTION_MULTIPLIER, REFRESH_RATE, CONTROL_SENDER_PORT, IMAGE_RECEIVER_PORT, BASE_URI
     while True:
         try:
-            resp = requests.get(f'{WEB_URI}/config').json()
+            resp = load_config()
             SCREEN_RESOLUTION_MULTIPLIER = float(resp.get("resolution_multiplier", SCREEN_RESOLUTION_MULTIPLIER))
             REFRESH_RATE = float(resp.get("refresh_rate", REFRESH_RATE))
             CONTROL_SENDER_PORT = resp.get("control_sender_port", CONTROL_SENDER_PORT)
             IMAGE_RECEIVER_PORT = resp.get("image_receiver_port", IMAGE_RECEIVER_PORT)
             BASE_URI = resp.get("server_uri", BASE_URI)
-        except requests.RequestException as e:
-            print(f"⚠️ Error fetching config: {e}")
+        except Exception as e:
+            print(f"❌ Error loading config: {e}")
         await asyncio.sleep(3)
 
         print(f"🌆 Resolution Multiplier: {SCREEN_RESOLUTION_MULTIPLIER}")

@@ -133,8 +133,8 @@ def get_config():
 
 # Run Flask in a Separate Thread
 def run_flask():
-    print(f"🚀 Flask running at http://{get_ip_address()}:8080")
-    socketio.run(app, host=HOST, port=8080, debug=DEBUG, use_reloader=False)
+    print(f"🚀 Flask running at http://{HOST}:{config.get("web_interface_port")}")
+    socketio.run(app, host='0.0.0.0', port=8080, debug=DEBUG, use_reloader=False)
 
 
 
