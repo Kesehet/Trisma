@@ -44,18 +44,65 @@
                 controlSocket.send(JSON.stringify({ action: "move", x, y }));
             });
 
-            screenCanvas.addEventListener("click", (event) => {
+            screenCanvas.addEventListener("mousedown", (event) => {
                 const { x, y } = calculatePercentagePosition(event);
-                controlSocket.send(JSON.stringify({ action: "click", x, y }));
+                controlSocket.send(JSON.stringify({ action: "mousedown", x, y, button: event.button }));
             });
 
+            screenCanvas.addEventListener("mouseup", (event) => {
+                const { x, y } = calculatePercentagePosition(event);
+                controlSocket.send(JSON.stringify({ action: "mouseup", x, y, button: event.button }));
+            });
+
+            screenCanvas.addEventListener("click", (event) => {
+                const { x, y } = calculatePercentagePosition(event);
+                controlSocket.send(JSON.stringify({ action: "click", x, y, button: event.button }));
+            });
+
+            screenCanvas.addEventListener("dblclick", (event) => {
+                const { x, y } = calculatePercentagePosition(event);
+                controlSocket.send(JSON.stringify({ action: "dblclick", x, y }));
+            });
+
+            screenCanvas.addEventListener("contextmenu", (event) => {
+                event.preventDefault(); // Prevent default browser context menu
+                const { x, y } = calculatePercentagePosition(event);
+                controlSocket.send(JSON.stringify({ action: "rightclick", x, y }));
+            });
+
+            const pressedKeys = new Set();
+            const modifierKeys = new Set(["Control", "Shift", "Alt", "Meta"]);
+
             document.addEventListener("keydown", (event) => {
-                controlSocket.send(JSON.stringify({ action: "keydown", key: event.key }));
+                // Prevent default browser shortcuts
+                if (event.ctrlKey || event.altKey || event.metaKey) {
+                    event.preventDefault();
+                }
+
+                // Track pressed keys
+                pressedKeys.add(event.key);
+
+                // Separate modifier keys
+                const isModifier = modifierKeys.has(event.key);
+
+                controlSocket.send(JSON.stringify({
+                    action: "keydown",
+                    key: event.key,
+                    isModifier: isModifier,
+                    keys: Array.from(pressedKeys),
+                }));
             });
 
             document.addEventListener("keyup", (event) => {
-                controlSocket.send(JSON.stringify({ action: "keyup", key: event.key }));
+                pressedKeys.delete(event.key); // Remove from set
+
+                controlSocket.send(JSON.stringify({
+                    action: "keyup",
+                    key: event.key,
+                }));
             });
+
+
         }
 
         function initImageWebSocket() {
@@ -155,6 +202,15 @@
 
     <div class="w3-container w3-card w3-light-grey w3-padding">
         <h2>Server Configuration</h2>
+
+        <label>Resolution Multiplier:</label>
+        <input class="w3-range" id="resolution_multiplier" type="range" min="0" max="1" step="0.1" oninput="document.getElementById('resolution_value').innerText = this.value; updateConfig()">
+        <span id="resolution_value">1</span><br>
+        
+        <label>Refresh Rate:</label>
+        <input class="w3-range" id="refresh_rate" type="range" min="1" max="60" step="1" oninput="document.getElementById('refresh_value').innerText = this.value; updateConfig()">
+        <span id="refresh_value">10</span><br>
+
         <label>Host:</label>
         <input class="w3-input w3-border" id="host" type="text" readonly><br>
         
@@ -170,13 +226,7 @@
         <label>Control Sender Port:</label>
         <input class="w3-input w3-border" id="control_sender_port" type="number" readonly><br>
         
-        <label>Resolution Multiplier:</label>
-        <input class="w3-range" id="resolution_multiplier" type="range" min="0" max="1" step="0.1" oninput="document.getElementById('resolution_value').innerText = this.value; updateConfig()">
-        <span id="resolution_value">1</span><br>
-        
-        <label>Refresh Rate:</label>
-        <input class="w3-range" id="refresh_rate" type="range" min="1" max="60" step="1" oninput="document.getElementById('refresh_value').innerText = this.value; updateConfig()">
-        <span id="refresh_value">10</span><br><br>
+        <br><br>
     </div>
 
 </body>

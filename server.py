@@ -75,12 +75,14 @@ async def send_mouse_control(websocket):
 
 async def handle_mouse_control(websocket):
     global mouse_event
+    global image_data
     print("🖱️ Connected for receiving mouse control")
     try:
         async for message in websocket:
             messageNow = json.loads(message)
             try:
                 mouse_event = messageNow
+                image_data = None
             except json.JSONDecodeError:
                 print("❌ Invalid mouse event received.")
     except websockets.exceptions.ConnectionClosed:
