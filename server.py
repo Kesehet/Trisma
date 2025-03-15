@@ -8,6 +8,8 @@ from flask import Flask, Response, render_template, request
 from flask_socketio import SocketIO
 from PIL import Image
 import requests
+import zlib
+import socket
 
 # Flask Setup
 app = Flask(__name__)
@@ -20,6 +22,8 @@ DEBUG = True
 image_data = None  # Stores received image
 display_lock = asyncio.Lock()  # Prevents race conditions
 mouse_event = None  # Stores mouse event
+image_updated = asyncio.Event()  # Global Event for image update
+mouse_event_updated = asyncio.Event()
 
 # Network Configuration
 HOST = "0.0.0.0"
@@ -60,6 +64,7 @@ async def receive_and_store_image(websocket):
                 async with display_lock:
                     image_data = message
                 last_image_data = message
+                image_updated.set()  # Notify image sender
                 await websocket.pong()
     except websockets.exceptions.ConnectionClosedError:
         print("❌ Client disconnected unexpectedly!")
@@ -71,51 +76,48 @@ async def receive_and_store_image(websocket):
 async def send_mouse_control(websocket):
     global mouse_event
     print("🖱️ Connected for mouse control sending")
-    last_event = None
     try:
         while True:
-            if mouse_event and mouse_event != last_event:
-                await websocket.send(json.dumps(mouse_event))
-                last_event = mouse_event
-            await asyncio.sleep(0.01)
+            await mouse_event_updated.wait()
+            await websocket.send(json.dumps(mouse_event))
+            mouse_event_updated.clear()
     except websockets.exceptions.ConnectionClosed:
         print("❌ Mouse control sender disconnected.")
 
 async def handle_mouse_control(websocket):
     global mouse_event
-    global image_data
     print("🖱️ Connected for receiving mouse control")
     try:
         async for message in websocket:
             messageNow = json.loads(message)
-            try:
-                mouse_event = messageNow
-                image_data = None
-            except json.JSONDecodeError:
-                print("❌ Invalid mouse event received.")
+            mouse_event = messageNow
+            mouse_event_updated.set()  # Notify sender
     except websockets.exceptions.ConnectionClosed:
         print("❌ Mouse control receiver disconnected.")
+
 
 async def send_image(websocket):
     print("🌆 Image WebSocket connected for Browser")
     try:
         while True:
+            await image_updated.wait()  # Wait for an image update
             async with display_lock:
                 if image_data:
-                    await websocket.send(image_data)
-            await asyncio.sleep(1 / config["refresh_rate"])
+                    await websocket.send(zlib.decompress(image_data))
+            image_updated.clear()  # Reset the event after sending
     except websockets.exceptions.ConnectionClosed:
         print("❌ Image WebSocket disconnected.")
 
 async def start_websockets():
     print("🚀 Starting WebSocket servers...")
     try:
-        await asyncio.gather(
+        servers = [
             websockets.serve(receive_and_store_image, HOST, IMAGE_RECEIVER_PORT),
             websockets.serve(handle_mouse_control, HOST, CONTROL_PORT),
             websockets.serve(send_mouse_control, HOST, CONTROL_SENDER_PORT),
             websockets.serve(send_image, HOST, IMAGE_SENDER_PORT)
-        )
+        ]
+        await asyncio.gather(*servers)
     except Exception as e:
         print(f"❌ WebSocket startup failed: {e}")
 

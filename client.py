@@ -7,6 +7,7 @@ import json
 import io
 from PIL import Image
 import pyautogui
+import zlib
 
 # Configuration
 BASE_URI = "localhost"
@@ -61,7 +62,8 @@ async def capture_and_send():
                 img_buffer = io.BytesIO()
                 img.save(img_buffer, format="JPEG", quality=50)
                 # print(f"🌆 Sending image of size: {len(img_buffer.getvalue())} bytes")
-                await websocket.send(img_buffer.getvalue())
+                compressed_data = zlib.compress(img_buffer.getvalue(), level=9)
+                await websocket.send(compressed_data)
 
                 elapsed_time = time.time() - start_time
                 await asyncio.sleep(max(0, 1 / REFRESH_RATE - elapsed_time))
@@ -164,7 +166,7 @@ def load_local_config():
 
 def load_server_config():
     try:
-        resp = requests.get(f"http://{BASE_URI}:{}/config").json()
+        resp = requests.get(f"http://{BASE_URI}:{WEB_INTERFACE_PORT}/config").json()
 
         return {
             "resolution_multiplier": float(resp.get("resolution_multiplier", SCREEN_RESOLUTION_MULTIPLIER)),
@@ -192,6 +194,8 @@ async def set_config():
         except Exception as e:
             print(f"❌ Error loading config: {e}")
         await asyncio.sleep(3)
+        with open("dynamic_config.json", "w") as config_file:
+            json.dump(resp, config_file, indent=4)
 
         print(f"🌆 Resolution Multiplier: {SCREEN_RESOLUTION_MULTIPLIER}")
         print(f"🌆 Refresh Rate: {REFRESH_RATE}")

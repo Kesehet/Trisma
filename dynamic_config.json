@@ -1,5 +1,5 @@
 {
-    "host": "localhost",
+    "control_sender_port": 4444,
     "image_receiver_port": 1111,
     "image_sender_port": 2222,
     "control_port": 3333,
