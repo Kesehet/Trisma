@@ -221,23 +221,25 @@
 
         <label>Mouse Smoothness:</label>
         <input class="w3-range" id="mouse_updater_distance" type="range" min="0" max="0.2" step="0.01" oninput="MOUSE_UPDATER_DISTANCE = this.value;document.getElementById('mouse_updater_distance_value').innerText = this.value;"><br>
-        <span id="mouse_updater_distance" id="mouse_updater_distance_value">0.01</span><br>
+        <span id="mouse_updater_distance_value" >0.01</span><br>
+
+        <hr/>
 
 
         <label>Host:</label>
-        <input class="w3-input w3-border" id="host" type="text" readonly><br>
+        <input class="w3-input w3-border" id="host" type="text" onchange="updateConfig()" ><br>
         
         <label>Image Receiver Port:</label>
-        <input class="w3-input w3-border" id="image_receiver_port" type="number" readonly><br>
+        <input class="w3-input w3-border" id="image_receiver_port" type="number" onchange="updateConfig()" ><br>
         
         <label>Image Sender Port:</label>
-        <input class="w3-input w3-border" id="image_sender_port" type="number" readonly><br>
+         <input class="w3-input w3-border" id="image_sender_port" type="number" onchange="updateConfig()" ><br>
         
         <label>Control Port:</label>
-        <input class="w3-input w3-border" id="control_port" type="number" readonly><br>
+        <input class="w3-input w3-border" id="control_port" type="number" onchange="updateConfig()" ><br>
         
         <label>Control Sender Port:</label>
-        <input class="w3-input w3-border" id="control_sender_port" type="number" readonly><br>
+        <input class="w3-input w3-border" id="control_sender_port" type="number" onchange="updateConfig()" ><br>
         
         <br><br>
     </div>

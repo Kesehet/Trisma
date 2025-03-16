@@ -11,10 +11,14 @@ import zlib
 
 # Configuration
 BASE_URI = "localhost"
-WEB_URI = f"http://{BASE_URI}:8080"
+WEB_INTERFACE_PORT = 8080
+WEB_URI = f"http://{BASE_URI}:{WEB_INTERFACE_PORT}"
 CONTROL_SENDER_PORT = 4444
 IMAGE_RECEIVER_PORT = 1111
-WEB_INTERFACE_PORT = 8080
+
+LAST_CONTROL_SENDER_PORT = CONTROL_SENDER_PORT
+LAST_IMAGE_RECEIVER_PORT = IMAGE_RECEIVER_PORT
+
 
 pyautogui.FAILSAFE = False
 
@@ -149,66 +153,84 @@ async def receive_mouse_control():
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             print(f"⚠️ Invalid mouse message format: {message} - Error: {e}")
 
-
-def load_local_config():
-    global WEB_INTERFACE_PORT
-    try:
-        with open("dynamic_config.json", "r") as config_file:
-            resp = json.load(config_file)
-            return {
-                "control_sender_port": resp.get("control_sender_port", CONTROL_SENDER_PORT),
-                "image_receiver_port": resp.get("image_receiver_port", IMAGE_RECEIVER_PORT),
-                "web_interface_port": resp.get("web_interface_port", WEB_INTERFACE_PORT),
-                "server_uri": resp.get("server_uri", BASE_URI)
-            }
-    except FileNotFoundError:
-        return {}
-
-def load_server_config():
-    try:
-        resp = requests.get(f"http://{BASE_URI}:{WEB_INTERFACE_PORT}/config").json()
-
-        return {
-            "resolution_multiplier": float(resp.get("resolution_multiplier", SCREEN_RESOLUTION_MULTIPLIER)),
-            "refresh_rate": float(resp.get("refresh_rate", REFRESH_RATE)),
-        }
-    except requests.exceptions.RequestException:
-        return {}
-
 def load_config():
-    local_config = load_local_config()
-    server_config = load_server_config()
-    return {**local_config, **server_config}
+    try:
+        print(f"Fetching config from {WEB_URI}/config")
+        resp = requests.get(f"{WEB_URI}/config").json()
+        print(f"Received config: {resp}")
+        return resp
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error fetching config: {e}")
+        return {}
+
+async def restart_websockets():
+    """Cancels existing WebSocket tasks and restarts them with new ports."""
+    global websocket_tasks
+
+    # Cancel existing tasks
+    for task in websocket_tasks:
+        task.cancel()
+    await asyncio.sleep(1)  # Allow cancellation to process
+
+    # Restart WebSocket connections
+    websocket_tasks = [
+        asyncio.create_task(capture_and_send()),
+        asyncio.create_task(receive_mouse_control())
+    ]
+    print("🔄 WebSocket connections restarted.")
+
 
 async def set_config():
-    """Fetches and updates configuration from the server."""
-    global SCREEN_RESOLUTION_MULTIPLIER, REFRESH_RATE, CONTROL_SENDER_PORT, IMAGE_RECEIVER_PORT, BASE_URI
+    """Fetches and updates configuration from the server, restarting WebSockets if necessary."""
+    global SCREEN_RESOLUTION_MULTIPLIER, REFRESH_RATE, CONTROL_SENDER_PORT, IMAGE_RECEIVER_PORT
+    global BASE_URI, LAST_CONTROL_SENDER_PORT, LAST_IMAGE_RECEIVER_PORT
     while True:
         try:
             resp = load_config()
             SCREEN_RESOLUTION_MULTIPLIER = float(resp.get("resolution_multiplier", SCREEN_RESOLUTION_MULTIPLIER))
             REFRESH_RATE = float(resp.get("refresh_rate", REFRESH_RATE))
-            CONTROL_SENDER_PORT = resp.get("control_sender_port", CONTROL_SENDER_PORT)
-            IMAGE_RECEIVER_PORT = resp.get("image_receiver_port", IMAGE_RECEIVER_PORT)
+            new_control_sender_port = resp.get("control_sender_port", CONTROL_SENDER_PORT)
+            new_image_receiver_port = resp.get("image_receiver_port", IMAGE_RECEIVER_PORT)
             BASE_URI = resp.get("server_uri", BASE_URI)
+
+            # Detect if ports have changed
+            if new_control_sender_port != CONTROL_SENDER_PORT or new_image_receiver_port != IMAGE_RECEIVER_PORT:
+                print("⚠️ Detected port change. Restarting WebSocket connections...")
+                
+                # Update ports
+                CONTROL_SENDER_PORT = new_control_sender_port
+                IMAGE_RECEIVER_PORT = new_image_receiver_port
+                
+                # Restart tasks safely
+                await restart_websockets()
+
         except Exception as e:
             print(f"❌ Error loading config: {e}")
-        await asyncio.sleep(3)
-        with open("dynamic_config.json", "w") as config_file:
-            json.dump(resp, config_file, indent=4)
 
-        print(f"🌆 Resolution Multiplier: {SCREEN_RESOLUTION_MULTIPLIER}")
-        print(f"🌆 Refresh Rate: {REFRESH_RATE}")
-        print(f"🌆 Control Sender Port: {CONTROL_SENDER_PORT}")
-        print(f"🌆 Image Receiver Port: {IMAGE_RECEIVER_PORT}")
+        await asyncio.sleep(3)  # Refresh config every 3 seconds
+
+
+websocket_tasks = []
+  
 
 async def main():
-    """Runs both screen streaming and mouse control tasks."""
-    await asyncio.gather(
-        set_config(),
-        capture_and_send(),
-        receive_mouse_control(),
-    )
+    """Runs both screen streaming and mouse control tasks with dynamic reconnections."""
+    global WEB_URI, BASE_URI, WEB_INTERFACE_PORT
+    base_ip = input("Enter the server IP: ")
+    base_port = input("Enter the server port: ")
+    WEB_INTERFACE_PORT = base_port
+    BASE_URI = base_ip
+    WEB_URI = f"http://{base_ip}:{base_port}"
+
+    global websocket_tasks
+    websocket_tasks = [
+        asyncio.create_task(capture_and_send()),
+        asyncio.create_task(receive_mouse_control()),
+        asyncio.create_task(set_config())  # Monitors config changes
+    ]
+
+    await asyncio.gather(*websocket_tasks)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
