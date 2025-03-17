@@ -190,6 +190,7 @@ async def send_audio():
         try:
             websocket = await safe_websocket_connect(URI)
             if not websocket:
+                print("❌ Failed to connect to WebSocket server for audio streaming. Retrying in 5 seconds...")
                 await asyncio.sleep(5)
                 continue  # Retry connection
 
@@ -221,9 +222,9 @@ ________________________________________________________________________________
 
 def load_config():
     try:
-        print(f"Fetching config from {WEB_URI}/config")
+        # print(f"Fetching config from {WEB_URI}/config")
         resp = requests.get(f"{WEB_URI}/config").json()
-        print(f"Received config: {resp}")
+        # print(f"Received config: {resp}")
         return resp
     except requests.exceptions.RequestException as e:
         print(f"❌ Error fetching config: {e}")
@@ -241,7 +242,8 @@ async def restart_websockets():
     # Restart WebSocket connections
     websocket_tasks = [
         asyncio.create_task(capture_and_send()),
-        asyncio.create_task(receive_mouse_control())
+        asyncio.create_task(receive_mouse_control()),
+        asyncio.create_task(send_audio())
     ]
     print("🔄 WebSocket connections restarted.")
 
@@ -257,7 +259,7 @@ async def set_config():
             REFRESH_RATE = float(resp.get("refresh_rate", REFRESH_RATE))
             new_control_sender_port = resp.get("control_sender_port", CONTROL_SENDER_PORT)
             new_image_receiver_port = resp.get("image_receiver_port", IMAGE_RECEIVER_PORT)
-            VOICE_SENDER_PORT = resp.get("voice_sender_port", VOICE_SENDER_PORT)
+            new_voice_sender_port = resp.get("voice_sender_port", VOICE_SENDER_PORT)
             BASE_URI = resp.get("server_uri", BASE_URI)
 
             # Detect if ports have changed
@@ -267,6 +269,7 @@ async def set_config():
                 # Update ports
                 CONTROL_SENDER_PORT = new_control_sender_port
                 IMAGE_RECEIVER_PORT = new_image_receiver_port
+                VOICE_SENDER_PORT = new_voice_sender_port
                 
                 # Restart tasks safely
                 await restart_websockets()
@@ -292,10 +295,10 @@ async def main():
     await set_config()
     global websocket_tasks
     websocket_tasks = [
-        # asyncio.create_task(capture_and_send()),
-        # asyncio.create_task(receive_mouse_control()),
+        asyncio.create_task(capture_and_send()),
+        asyncio.create_task(receive_mouse_control()),
         asyncio.create_task(send_audio()),
-        # asyncio.create_task(set_config())  # Monitors config changes
+        asyncio.create_task(set_config())  # Monitors config changes
     ]
 
     try:

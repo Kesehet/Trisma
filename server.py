@@ -16,7 +16,7 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Debug Mode
-DEBUG = True
+DEBUG = False
 
 # Shared Variables (Thread-Safe)
 image_data = None  # Stores received image
@@ -115,7 +115,7 @@ voice_clients = set()
 
 async def audio_handler(websocket):
     global voice_clients
-    print("🎤 Connected for audio streaming")
+    print(f"🎤 Connected {len(voice_clients)} clients for voice chat")
     voice_clients.add(websocket)
     try:
         async for message in websocket:
@@ -159,7 +159,7 @@ def get_config():
 # Run Flask in a Separate Thread
 def run_flask():
     print(f"🚀 Flask running at http://{HOST}:{config.get('web_interface_port')}")
-    socketio.run(app, host='0.0.0.0', port=8080, debug=DEBUG, use_reloader=False)
+    socketio.run(app, host='0.0.0.0', port=config.get('web_interface_port'), debug=DEBUG, use_reloader=False)
 
 
 
