@@ -8,13 +8,15 @@ import io
 from PIL import Image
 import pyautogui
 import zlib
+import pyaudio
 
 # Configuration
 BASE_URI = "localhost"
-WEB_INTERFACE_PORT = 8080
+WEB_INTERFACE_PORT = 12312312
 WEB_URI = f"http://{BASE_URI}:{WEB_INTERFACE_PORT}"
-CONTROL_SENDER_PORT = 4444
-IMAGE_RECEIVER_PORT = 1111
+CONTROL_SENDER_PORT = 1232352
+IMAGE_RECEIVER_PORT = 123523
+VOICE_SENDER_PORT = 123524
 
 LAST_CONTROL_SENDER_PORT = CONTROL_SENDER_PORT
 LAST_IMAGE_RECEIVER_PORT = IMAGE_RECEIVER_PORT
@@ -28,17 +30,24 @@ SCREEN_RESOLUTION_MULTIPLIER = 1
 REFRESH_RATE = 15
 
 async def safe_websocket_connect(uri, retries=5, delay=3):
-    """Attempts to connect to a WebSocket with retries."""
-    for attempt in range(retries):
+    """Attempts to connect to a WebSocket with retries, preventing total failure."""
+    attempt = 0
+    while True:
         try:
             websocket = await websockets.connect(uri, ping_interval=10, ping_timeout=20)
             print(f"✅ Connected to {uri} safely.")
             return websocket
         except Exception as e:
-            print(f"❌ Failed to connect to {uri} (Attempt {attempt+1}/{retries}): {e}")
-            await asyncio.sleep(delay)
-    print("❌ Maximum retries reached. Exiting.")
-    return None
+            attempt += 1
+            print(f"❌ Failed to connect to {uri} (Attempt {attempt}/{retries}): {e}")
+            if attempt >= retries:
+                print("❌ Maximum retries reached. Retrying indefinitely...")
+            await asyncio.sleep(delay * min(2**attempt, 30))  # Exponential backoff, max 30s delay
+
+
+'''
+________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+'''
 
 async def capture_and_send():
     """Captures the screen and sends images over WebSocket with reconnect logic."""
@@ -46,34 +55,39 @@ async def capture_and_send():
     URI = f"ws://{BASE_URI}:{IMAGE_RECEIVER_PORT}"
     print(f"⚙ Connecting to {URI} for Image Streaming")
 
-    websocket = await safe_websocket_connect(URI)
-    if not websocket:
-        return
-
-    with mss.mss() as sct:
-        monitor = sct.monitors[1]
-        while True:
-            try:
-                start_time = time.time()
-                screenshot = sct.grab(monitor)
-                img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
-                
-                img = img.resize((
-                    int(SCREEN_WIDTH * SCREEN_RESOLUTION_MULTIPLIER),
-                    int(SCREEN_HEIGHT * SCREEN_RESOLUTION_MULTIPLIER)
-                ))
-
-                img_buffer = io.BytesIO()
-                img.save(img_buffer, format="JPEG", quality=50)
-                # print(f"🌆 Sending image of size: {len(img_buffer.getvalue())} bytes")
-                compressed_data = zlib.compress(img_buffer.getvalue(), level=9)
-                await websocket.send(compressed_data)
-
-                elapsed_time = time.time() - start_time
-                await asyncio.sleep(max(0, 1 / REFRESH_RATE - elapsed_time))
-            except Exception as e:
-                print(f"❌ Unexpected error: {e}")
+    while True:  # Keep retrying indefinitely
+        try:
+            websocket = await safe_websocket_connect(URI)
+            if not websocket:
                 await asyncio.sleep(5)
+                continue  # Retry connection
+
+            with mss.mss() as sct:
+                monitor = sct.monitors[1]
+                while True:
+                    start_time = time.time()
+                    screenshot = sct.grab(monitor)
+                    img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+
+                    img = img.resize((
+                        int(SCREEN_WIDTH * SCREEN_RESOLUTION_MULTIPLIER),
+                        int(SCREEN_HEIGHT * SCREEN_RESOLUTION_MULTIPLIER)
+                    ))
+
+                    img_buffer = io.BytesIO()
+                    img.save(img_buffer, format="JPEG", quality=50)
+                    compressed_data = zlib.compress(img_buffer.getvalue(), level=9)
+                    await websocket.send(compressed_data)
+
+                    elapsed_time = time.time() - start_time
+                    await asyncio.sleep(max(0, 1 / REFRESH_RATE - elapsed_time))
+
+        except (asyncio.CancelledError, websockets.exceptions.ConnectionClosedError):
+            print("🔄 WebSocket connection lost, attempting reconnect...")
+            await asyncio.sleep(5)  # Wait before retrying
+        except Exception as e:
+            print(f"❌ Unexpected error in capture_and_send: {e}")
+            await asyncio.sleep(5)  # Avoid rapid failures
 
 async def receive_mouse_control():
     """Receives mouse movements and moves the client mouse."""
@@ -147,11 +161,63 @@ async def receive_mouse_control():
                 if key in held_keys:
                     pyautogui.keyUp(key)  # Release modifier key
                     held_keys.remove(key)
-                else:
-                    pyautogui.keyUp(key)
+        except asyncio.CancelledError:
+            print("🔄 Task cancelled.")
+            break
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            print(f"⚠️ Invalid mouse message format: {message} - Error: {e}")
                 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             print(f"⚠️ Invalid mouse message format: {message} - Error: {e}")
+
+# Audio settings
+AUDIO_CHUNK = 1024  # Audio chunk size
+FORMAT = pyaudio.paInt16  # Audio format
+CHANNELS = 1  # Mono
+RATE = 44100  # Sample rate
+
+async def send_audio():
+    """Streams audio from the microphone to the WebSocket server."""
+    URI = f"ws://{BASE_URI}:{VOICE_SENDER_PORT}"
+    print(f"🎤 Connecting to {URI} for Audio Streaming")
+
+    p = pyaudio.PyAudio()
+    stream = p.open(format=FORMAT, channels=CHANNELS,
+                    rate=RATE, input=True,
+                    frames_per_buffer=AUDIO_CHUNK)
+
+    while True:  # Keep retrying indefinitely
+        try:
+            websocket = await safe_websocket_connect(URI)
+            if not websocket:
+                await asyncio.sleep(5)
+                continue  # Retry connection
+
+            print("🎤 Streaming audio... Press Ctrl+C to stop.")
+            try:
+                while True:
+                    data = stream.read(AUDIO_CHUNK)  # Read chunk from mic
+                    await websocket.send(data)  # Send audio to server
+            except asyncio.CancelledError:
+                print("🔄 Audio stream task cancelled.")
+                break
+            finally:
+                stream.stop_stream()
+                stream.close()
+                p.terminate()
+
+        except (asyncio.CancelledError, websockets.exceptions.ConnectionClosedError):
+            print("🔄 WebSocket connection for audio was lost, attempting reconnect...")
+            await asyncio.sleep(5)  # Wait before retrying
+        except Exception as e:
+            print(f"❌ Unexpected error in send_audio: {e}")
+            await asyncio.sleep(5)  # Avoid rapid failures
+
+
+'''
+________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+'''
+
 
 def load_config():
     try:
@@ -183,7 +249,7 @@ async def restart_websockets():
 async def set_config():
     """Fetches and updates configuration from the server, restarting WebSockets if necessary."""
     global SCREEN_RESOLUTION_MULTIPLIER, REFRESH_RATE, CONTROL_SENDER_PORT, IMAGE_RECEIVER_PORT
-    global BASE_URI, LAST_CONTROL_SENDER_PORT, LAST_IMAGE_RECEIVER_PORT
+    global BASE_URI, LAST_CONTROL_SENDER_PORT, LAST_IMAGE_RECEIVER_PORT, VOICE_SENDER_PORT
     while True:
         try:
             resp = load_config()
@@ -191,6 +257,7 @@ async def set_config():
             REFRESH_RATE = float(resp.get("refresh_rate", REFRESH_RATE))
             new_control_sender_port = resp.get("control_sender_port", CONTROL_SENDER_PORT)
             new_image_receiver_port = resp.get("image_receiver_port", IMAGE_RECEIVER_PORT)
+            VOICE_SENDER_PORT = resp.get("voice_sender_port", VOICE_SENDER_PORT)
             BASE_URI = resp.get("server_uri", BASE_URI)
 
             # Detect if ports have changed
@@ -222,14 +289,23 @@ async def main():
     BASE_URI = base_ip
     WEB_URI = f"http://{base_ip}:{base_port}"
 
+    await set_config()
     global websocket_tasks
     websocket_tasks = [
-        asyncio.create_task(capture_and_send()),
-        asyncio.create_task(receive_mouse_control()),
-        asyncio.create_task(set_config())  # Monitors config changes
+        # asyncio.create_task(capture_and_send()),
+        # asyncio.create_task(receive_mouse_control()),
+        asyncio.create_task(send_audio()),
+        # asyncio.create_task(set_config())  # Monitors config changes
     ]
 
-    await asyncio.gather(*websocket_tasks)
+    try:
+        await asyncio.gather(*websocket_tasks)
+    except asyncio.CancelledError:
+        print("⚠️ Async tasks cancelled. Cleaning up before exiting...")
+    finally:
+        for task in websocket_tasks:
+            task.cancel()
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":

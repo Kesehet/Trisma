@@ -32,6 +32,7 @@ IMAGE_RECEIVER_PORT = 1111
 IMAGE_SENDER_PORT = 2222
 CONTROL_PORT = 3333
 CONTROL_SENDER_PORT = 4444
+VOICE_SENDER_PORT = 5555
 
 def get_ip_address():
     '''Get public IP address'''
@@ -47,7 +48,8 @@ config = {
     "control_sender_port": CONTROL_SENDER_PORT,
     "resolution_multiplier": 1,
     "refresh_rate": 10,
-    "server_uri": get_ip_address()
+    "server_uri": get_ip_address(),
+    "voice_sender_port" : VOICE_SENDER_PORT,
 }
 
 # WebSocket Handlers
@@ -108,6 +110,25 @@ async def send_image(websocket):
     except websockets.exceptions.ConnectionClosed:
         print("❌ Image WebSocket disconnected.")
 
+# Store connected clients
+voice_clients = set()
+
+async def audio_handler(websocket):
+    global voice_clients
+    print("🎤 Connected for audio streaming")
+    voice_clients.add(websocket)
+    try:
+        async for message in websocket:
+            # Forward audio to all connected browser clients
+            websockets.broadcast(voice_clients, message)
+    except websockets.exceptions.ConnectionClosed:
+        print("❌ Audio client disconnected.")
+    finally:
+        voice_clients.remove(websocket)
+        print("🔌 Audio connection closed.")
+
+
+
 async def start_websockets():
     print("🚀 Starting WebSocket servers...")
     try:
@@ -115,9 +136,11 @@ async def start_websockets():
             websockets.serve(receive_and_store_image, HOST, IMAGE_RECEIVER_PORT),
             websockets.serve(handle_mouse_control, HOST, CONTROL_PORT),
             websockets.serve(send_mouse_control, HOST, CONTROL_SENDER_PORT),
-            websockets.serve(send_image, HOST, IMAGE_SENDER_PORT)
+            websockets.serve(send_image, HOST, IMAGE_SENDER_PORT),
+            websockets.serve(audio_handler, HOST, VOICE_SENDER_PORT)
         ]
         await asyncio.gather(*servers)
+        print("✅ WebSocket servers started successfully.")
     except Exception as e:
         print(f"❌ WebSocket startup failed: {e}")
 

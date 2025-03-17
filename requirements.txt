@@ -25,6 +25,7 @@ multidict==6.1.0
 numpy==2.2.3
 pillow==11.1.0
 propcache==0.3.0
+PyAudio==0.2.14
 PyAutoGUI==0.9.54
 PyGetWindow==0.0.9
 PyMsgBox==1.0.9

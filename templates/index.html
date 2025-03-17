@@ -20,6 +20,7 @@
         const ctx = screenCanvas.getContext("2d");
         let CONTROL_SENDER_PORT = 0;
         let IMAGE_SENDER_PORT = 0;
+        let VOICE_SENDER_PORT = 0;
         let RefreshRate = 10;
         let controlSocket = null;
         let imageSocket = null;
@@ -142,6 +143,32 @@
             };
         }
 
+        function initVoiceWebSocket() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const socket = new WebSocket(`ws://${location.hostname}:` + VOICE_SENDER_PORT);
+            
+            let audioBufferQueue = [];
+            
+            socket.binaryType = "arraybuffer";
+            socket.onmessage = (event) => {
+                const audioBuffer = event.data;
+                playAudio(audioBuffer);
+            };
+
+            function playAudio(audioBuffer) {
+                audioContext.decodeAudioData(audioBuffer, (decodedData) => {
+                    const source = audioContext.createBufferSource();
+                    source.buffer = decodedData;
+                    source.connect(audioContext.destination);
+                    source.start(0);
+                });
+            }
+
+            socket.onopen = () => console.log("Connected to WebSocket server");
+            socket.onerror = (err) => console.error("WebSocket Error:", err);
+            socket.onclose = () => console.log("Disconnected from server");
+        }
+
         function calculatePercentagePosition(event) {
             const rect = screenCanvas.getBoundingClientRect();
             const x = (event.clientX - rect.left) / rect.width;
@@ -166,6 +193,11 @@
                         initImageWebSocket();
                     }
 
+                    if (data.voice_sender_port) {
+                        VOICE_SENDER_PORT = data.voice_sender_port;
+                        initVoiceWebSocket();
+                    }
+
                     document.getElementById("host").value = data.host;
                     document.getElementById("image_receiver_port").value = data.image_receiver_port;
                     document.getElementById("image_sender_port").value = data.image_sender_port;
@@ -175,6 +207,7 @@
                     document.getElementById("refresh_rate").value = data.refresh_rate;
                     document.getElementById("resolution_value").innerText = data.resolution_multiplier;
                     document.getElementById("refresh_value").innerText = data.refresh_rate;
+                    document.getElementById("voice_sender_port").value = data.voice_sender_port;
 
 
                 })
@@ -191,7 +224,8 @@
                 control_port: parseInt(document.getElementById("control_port").value),
                 control_sender_port: parseInt(document.getElementById("control_sender_port").value),
                 resolution_multiplier: parseFloat(document.getElementById("resolution_multiplier").value),
-                refresh_rate: parseInt(document.getElementById("refresh_rate").value)
+                refresh_rate: parseInt(document.getElementById("refresh_rate").value),
+                voice_sender_port: parseInt(document.getElementById("voice_sender_port").value)
             };
 
             fetch("/config", {
@@ -203,6 +237,43 @@
             })
             .then(response => response.json())
             .catch(error => console.error("Error updating config:", error));
+        }
+
+        function manualConfig(input) {
+            const config = convertToJSON(input);
+            console.log(config);
+            document.getElementById("host").value = config.host;
+            document.getElementById("image_receiver_port").value = config.image_receiver_port;
+            document.getElementById("image_sender_port").value = config.image_sender_port;
+            document.getElementById("control_port").value = config.control_port;
+            document.getElementById("control_sender_port").value = config.control_sender_port;
+            document.getElementById("voice_sender_port").value = config.voice_sender_port;
+            
+            updateConfig();
+        }
+        
+        function convertToJSON(input) {
+            const lines = input.trim().split('\n');
+            const result = {};
+            
+            lines.forEach(line => {
+                const match = line.match(/(\d+\.\d+\.\d+\.\d+:\d+)\s*->\s*(\d+)\/tcp/);
+                if (match) {
+                    const [_, ipPort, key] = match;
+                    result[key] = ipPort;
+                }
+            });
+
+            let res = {
+                "host": result["8080"].split(":")[0],
+                "image_receiver_port": result["1111"].split(":")[1],
+                "image_sender_port": result["2222"].split(":")[1],
+                "control_port": result["3333"].split(":")[1],
+                "control_sender_port": result["4444"].split(":")[1],
+                "voice_sender_port": result["5555"].split(":")[1],
+            };
+            
+            return res;
         }
         
         
@@ -240,7 +311,13 @@
         
         <label>Control Sender Port:</label>
         <input class="w3-input w3-border" id="control_sender_port" type="number" onchange="updateConfig()" ><br>
+
+        <label>Voice Sender Port:</label>
+        <input class="w3-input w3-border" id="voice_sender_port" type="number" onchange="updateConfig()" ><br>
         
+        <!-- text area for inputting the manual configuration -->
+         <label>Manual Configuration:</label>
+        <textarea class="w3-input w3-border" id="manual_config" rows="10" cols="50" placeholder="Paste the manual configuration here" onchange="manualConfig(this.value)"></textarea><br>
         <br><br>
     </div>
 
